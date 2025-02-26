@@ -1,0 +1,88 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # MySQL 데이터베이스
+  db:
+    image: mysql:8.0
+    volumes:
+      - db_data:/var/lib/mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    networks:
+      - popup_network
+
+  # WordPress 웹사이트
+  wordpress:
+    build: ./wordpress
+    depends_on:
+      - db
+    volumes:
+      - ./wordpress/wp-content:/var/www/html/wp-content
+    restart: always
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: ${MYSQL_USER}
+      WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD}
+      WORDPRESS_DB_NAME: ${MYSQL_DATABASE}
+      WORDPRESS_DEBUG: 1
+    networks:
+      - popup_network
+
+  # 팝업스토어 정보 수집기
+  collector:
+    build: ./collector
+    volumes:
+      - ./collector:/app
+      - collector_data:/app/output
+    environment:
+      NAVER_CLIENT_ID: ${NAVER_CLIENT_ID}
+      NAVER_CLIENT_SECRET: ${NAVER_CLIENT_SECRET}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      WORDPRESS_URL: http://wordpress
+      WORDPRESS_USERNAME: ${WORDPRESS_USERNAME}
+      WORDPRESS_PASSWORD: ${WORDPRESS_PASSWORD}
+    networks:
+      - popup_network
+    depends_on:
+      - wordpress
+
+  # React 프론트엔드 개발 서버
+  frontend:
+    build: ./frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - REACT_APP_API_URL=http://localhost/wp-json
+    ports:
+      - "3000:3000"
+    command: npm start
+    networks:
+      - popup_network
+
+  # Nginx 웹 서버
+  nginx:
+    build: ./nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - wordpress
+      - frontend
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+    networks:
+      - popup_network
+
+networks:
+  popup_network:
+    driver: bridge
+
+volumes:
+  db_data:
+  collector_data:
